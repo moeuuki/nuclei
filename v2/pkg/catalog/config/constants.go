@@ -23,6 +23,9 @@ const (
 	CustomGithubTemplatesDirName = "github"
 	CustomAzureTemplatesDirName  = "azure"
 	CustomGitLabTemplatesDirName = "gitlab"
+
+	CustomPluginsDirectory      = "plugins"
+	CustomPluginsCacheDirectory = "plugins-cache"
 )
 
 // IsOutdatedVersion compares two versions and returns true

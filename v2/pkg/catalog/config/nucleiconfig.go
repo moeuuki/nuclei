@@ -28,6 +28,12 @@ type Config struct {
 	CustomGitLabTemplatesDirectory string `json:"custom-gitlab-templates-directory"`
 	CustomAzureTemplatesDirectory  string `json:"custom-azure-templates-directory"`
 
+	// PluginsDirectory is the directory for storing nuclei plugins
+	// Cache Directory stores the compiled versions of the plugins so
+	// as to reduce startup time.
+	PluginsDirectory      string `json:"nuclei-plugins-directory,omitempty"`
+	PluginsCacheDirectory string `json:"nuclei-plugins-cache-directory,omitempty"`
+
 	TemplateVersion  string `json:"nuclei-templates-version,omitempty"`
 	NucleiIgnoreHash string `json:"nuclei-ignore-hash,omitempty"`
 
@@ -182,6 +188,10 @@ func (c *Config) SetTemplatesDir(dirPath string) {
 		dirPath = filepath.Join(cwd, dirPath)
 	}
 	c.TemplatesDirectory = dirPath
+
+	c.PluginsDirectory = filepath.Join(c.configDir, CustomPluginsDirectory)
+	c.PluginsCacheDirectory = filepath.Join(c.configDir, CustomPluginsCacheDirectory)
+
 	// Update the custom templates directory
 	c.CustomGithubTemplatesDirectory = filepath.Join(dirPath, CustomGithubTemplatesDirName)
 	c.CustomS3TemplatesDirectory = filepath.Join(dirPath, CustomS3TemplatesDirName)

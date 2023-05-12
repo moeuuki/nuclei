@@ -1,0 +1,82 @@
+syntax = "proto3";
+package nuclei;
+
+// plugins.proto contains the specifications for nuclei
+// wasm (WebAssembly) plugins.
+// 
+// The specification describes integration points in the engine
+// that allow plugins to be loaded and executed for the 
+// purpose of extending the functionality of the engine.
+//
+// The below is the list of plugin types that are possible - 
+//   - HelperFunction - A plugin that registers a new helper function
+// TODO: Add more types of plugins here.
+//
+option go_package = "./proto";
+
+// HelperFunction is the specification for a plugin that
+// registers new helper functions with the engine which
+// can then be used from nuclei templates.
+//
+// go:plugin type=plugin version=1
+service HelperFunction {
+    // Info returns the information about the helper function
+    // that are registered with the engine.
+    rpc Info(Empty) returns (HelperFunctionInfo) {}
+    // Executes executes a helper function with the given request
+    // and returns the response.
+    //
+    // The evaluation for the above registered helper function
+    // happens using the Execute method of the plugin.
+    rpc Execute(HelperFunctionRequest) returns (HelperFunctionResponse) {}
+}
+
+// Empty is an empty message.
+message Empty {}
+
+// HelperFunctionInfo contains the information about a helper function
+// that is registered with the engine.
+message HelperFunctionInfo {
+    // Items is the list of helper functions that are registered with the engine.
+    repeated HelperFunctionInfoItem Items = 1;
+}
+
+// HelperFunctionInfoItem contains the information about a helper function
+message HelperFunctionInfoItem {
+    // Name is the name of the helper function.
+    string Name = 1;
+    // NumberOfArgs is the number of arguments the helper function takes.
+	int32 NumberOfArgs = 2;
+    // Signatures is the list of signatures the helper function takes.
+	repeated string Signatures = 3;
+}
+
+// HelperFunctionRequest is the request for a helper function.
+message HelperFunctionRequest {
+    // Args is the list of arguments for the helper function.
+    repeated AnyScalar Args = 1;
+    // Name is the name of the helper function.
+    string Name = 2;
+}
+
+
+// AnyScalar is a scalar value that can be used for passing
+// arguments to helper functions.
+message AnyScalar {
+    oneof kind {
+        string StringValue = 1;
+        int64 IntValue = 2;
+        bool BoolValue = 3;
+        double DoubleValue = 4;
+    }
+}
+
+// HelperFunctionResponse is the response for a helper function.
+message HelperFunctionResponse {
+    // Result is the result of the helper function.
+    AnyScalar Result = 1;
+}
+
+service PostResponseHook {
+    rpc Execute(PostResponseHookRequest) returns (PostResponseHookResponse) {}
+}

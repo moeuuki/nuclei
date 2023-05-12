@@ -33,6 +33,7 @@ import (
 	"github.com/projectdiscovery/nuclei/v2/pkg/input"
 	"github.com/projectdiscovery/nuclei/v2/pkg/output"
 	"github.com/projectdiscovery/nuclei/v2/pkg/parsers"
+	"github.com/projectdiscovery/nuclei/v2/pkg/plugins/manager"
 	"github.com/projectdiscovery/nuclei/v2/pkg/progress"
 	"github.com/projectdiscovery/nuclei/v2/pkg/projectfile"
 	"github.com/projectdiscovery/nuclei/v2/pkg/protocols"
@@ -71,6 +72,7 @@ type Runner struct {
 	hmapInputProvider *hybrid.Input
 	browser           *engine.Browser
 	ratelimiter       *ratelimit.Limiter
+	manager           *manager.Manager
 	hostErrors        hosterrorscache.CacheInterface
 	resumeCfg         *types.ResumeCfg
 	pprofServer       *http.Server
@@ -319,6 +321,14 @@ func New(options *types.Options) (*Runner, error) {
 	} else {
 		runner.ratelimiter = ratelimit.NewUnlimited(context.Background())
 	}
+
+	manager, err := manager.New(&manager.Options{
+		CustomPluginsDirectory: "",
+	})
+	if err != nil {
+		return nil, errors.Wrap(err, "could not create plugins manager")
+	}
+	runner.manager = manager
 	return runner, nil
 }
 
@@ -391,6 +401,7 @@ func (r *Runner) Close() {
 	if r.ratelimiter != nil {
 		r.ratelimiter.Stop()
 	}
+	_ = r.manager.Close()
 }
 
 // RunEnumeration sets up the input layer for giving input nuclei.

@@ -1,0 +1,20 @@
+id: alibaba-canal-info-leak
+
+info:
+  name: Alibaba Canal Config - Detect
+  author: pikpikcu
+  severity: info
+
+http:
+  - method: POST
+    path:
+      - "{{BaseURL}}/api/v1/canal/config/1/1"
+    body: '{{common_collection_5("touch /tmp/success666")}}'
+    headers:
+      Content-Type: application/json
+
+    matchers-condition: and
+    matchers:
+      - type: status
+        status:
+          - 200
