@@ -224,6 +224,11 @@ on extensive configurability, massive extensibility and ease of use.`)
 		flagSet.StringVarP(&options.FuzzingMode, "fuzzing-mode", "fm", "", "overrides fuzzing mode set in template (multiple, single)"),
 	)
 
+	flagSet.CreateGroup("plugins", "Plugins",
+		flagSet.StringVarP(&options.CustomPluginsDirectory, "custom-plugins-directory", "cpd", "", "custom plugins directory"),
+		flagSet.BoolVarP(&options.ListPlugins, "list-plugins", "lp", false, "list all available plugins"),
+	)
+
 	flagSet.CreateGroup("uncover", "Uncover",
 		flagSet.BoolVarP(&options.Uncover, "uncover", "uc", false, "enable uncover engine"),
 		flagSet.StringSliceVarP(&options.UncoverQuery, "uncover-query", "uq", nil, "uncover search query", goflags.FileStringSliceOptions),

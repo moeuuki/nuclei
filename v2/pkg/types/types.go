@@ -360,6 +360,10 @@ type Options struct {
 	FuzzingType string
 	// Fuzzing Mode overrides template level fuzzing-mode configuration
 	FuzzingMode string
+	// CustomPluginsDirectory is custom directory to load plugins from
+	CustomPluginsDirectory string
+	// ListPlugins lists available plugins
+	ListPlugins bool
 }
 
 // ShouldLoadResume resume file

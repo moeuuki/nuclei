@@ -206,6 +206,7 @@ func ParseTemplateFromReader(reader io.Reader, preprocessor Preprocessor, option
 	if err != nil {
 		return nil, err
 	}
+	template.Original = string(data)
 
 	data = template.expandPreprocessors(data)
 	if preprocessor != nil {

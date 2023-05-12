@@ -2,11 +2,7 @@ package manager
 
 import (
 	"context"
-	"encoding/json"
-	"fmt"
 	"os"
-	"path/filepath"
-	"strings"
 
 	"github.com/pkg/errors"
 	"github.com/projectdiscovery/dsl"
@@ -16,7 +12,6 @@ import (
 	"github.com/projectdiscovery/nuclei/v2/pkg/plugins/proto"
 	"github.com/tetratelabs/wazero"
 	"github.com/tetratelabs/wazero/imports/wasi_snapshot_preview1"
-	"github.com/tetratelabs/wazero/sys"
 )
 
 // Manager is a plugin manager for Nuclei WASM Plugin System
@@ -35,6 +30,8 @@ type Plugin struct {
 	Type PluginType
 	// Path is the path to the plugin
 	Path string
+
+	HelperFunctionsInfo []PluginIndexHelperFunction
 }
 
 // PluginType is the type of plugin
@@ -60,6 +57,8 @@ func (p PluginType) String() string {
 type Options struct {
 	// CustomPluginsDirectory is custom directory to load plugins from
 	CustomPluginsDirectory string
+	// ListPlugins is a flag to list plugins
+	ListPlugins bool
 }
 
 // New creates a new plugin manager from provided options
@@ -110,6 +109,10 @@ func New(options *Options) (*Manager, error) {
 		}
 	}
 
+	if options.ListPlugins {
+		manager.list()
+	}
+
 	// Initialize the modules
 	functions, err := proto.NewHelperFunctionPlugin(context.Background(), proto.WazeroRuntime(newRuntime))
 	if err != nil {
@@ -142,6 +145,19 @@ func New(options *Options) (*Manager, error) {
 	return manager, nil
 }
 
+// list lists the plugins
+func (m *Manager) list() {
+	for _, plugin := range m.plugins {
+		gologger.Info().Msgf("%s - %s", plugin.Name, plugin.Type.String())
+
+		if len(plugin.HelperFunctionsInfo) > 0 {
+			for _, helper := range plugin.HelperFunctionsInfo {
+				gologger.Silent().Msgf("    %s - %d %v", helper.Name, helper.NumberOfArgs, helper.Signatures)
+			}
+		}
+	}
+}
+
 // Close closes the plugin manager
 func (m *Manager) Close() error {
 	err := m.cache.Close(context.Background())
@@ -163,181 +179,14 @@ func (m *Manager) createPluginsCache(directory string) error {
 	return nil
 }
 
-// PluginsIndex is the index of plugins
-type PluginsIndex struct {
-	Plugins map[string]PluginIndexItem `json:"plugins"`
-}
-
-// UnmarshalFromFile unmarshals the plugins index from file
-func (p *PluginsIndex) UnmarshalFromFile(path string) error {
-	file, err := os.Open(path)
-	if err != nil {
-		return err
-	}
-	defer file.Close()
-
-	return json.NewDecoder(file).Decode(p)
-}
-
-// MarshalToFile marshals the plugins index to file
-func (p *PluginsIndex) MarshalToFile(path string) error {
-	file, err := os.Create(path)
-	if err != nil {
-		return err
-	}
-	defer file.Close()
-
-	return json.NewEncoder(file).Encode(p)
-}
-
-// PluginIndexItem is an item in the plugin index
-type PluginIndexItem struct {
-	Name       string     `json:"name"`
-	PluginType PluginType `json:"plugin_type"`
-}
-
-// loadFromDirectory loads plugins from the specified directory
-func (m *Manager) loadFromDirectory(directory string, runtime proto.WazeroNewRuntime) error {
-	// Walk the directory and look for wasm files
-	// as well as index.json files.
-	plugins, index, err := m.gatherPluginsIndexFromDirectory(directory)
-	if err != nil {
-		return errors.Wrap(err, "could not gather plugins and index")
-	}
-
-	// Load the index file
-	pluginsIndex := &PluginsIndex{}
-	if index != "" {
-		if err := pluginsIndex.UnmarshalFromFile(index); err != nil {
-			return errors.Wrap(err, "could not unmarshal plugins index")
-		}
-	}
-	if pluginsIndex.Plugins == nil {
-		index = filepath.Join(directory, "index.json")
-		pluginsIndex.Plugins = make(map[string]PluginIndexItem)
-	}
-
-	// Go through all the plugins and correlate index
-	// to load them into the manager.
-	var modified bool
-	for _, plugin := range plugins {
-		pluginName := getPluginName(plugin)
-
-		_, ok := pluginsIndex.Plugins[pluginName]
-		if !ok {
-			modified = true
-			// If the plugin is not present in the index, try to identify it
-			// and add it to the index.
-			pluginType, err := m.identifyPluginType(plugin, runtime)
-			if err != nil {
-				return errors.Wrap(err, "could not identify plugin type")
-			}
-			indexItem := PluginIndexItem{
-				Name:       pluginName,
-				PluginType: pluginType,
-			}
-			pluginsIndex.Plugins[pluginName] = indexItem
-		}
-	}
-
-	for plugin, data := range pluginsIndex.Plugins {
-		// If the plugin is already loaded, skip it
-		if _, ok := m.plugins[plugin]; ok {
-			continue
-		}
-		if data.PluginType == PluginTypeInvalid {
-			continue
-		}
-		// Load the plugin
-		pluginPath := filepath.Join(directory, plugin+".wasm")
-		m.plugins[plugin] = &Plugin{
-			Name: plugin,
-			Type: data.PluginType,
-			Path: pluginPath,
-		}
-	}
-	// Marshal the index back to file
-	if modified {
-		if err := pluginsIndex.MarshalToFile(index); err != nil {
-			return errors.Wrap(err, "could not marshal plugins index")
-		}
-	}
-	return nil
-}
-
-func getPluginName(path string) string {
-	return strings.Trim(filepath.Base(path), ".wasm")
-}
-
-// gatherPluginsIndexFromDirectory gathers the plugins and index from the specified directory
-func (m *Manager) gatherPluginsIndexFromDirectory(directory string) ([]string, string, error) {
-	var plugins []string
-	var index string
-
-	err := filepath.Walk(directory, func(path string, info os.FileInfo, err error) error {
-		if err != nil {
-			return err
-		}
-		if info.IsDir() {
-			return nil
-		}
-		fileName := filepath.Base(path)
-		if filepath.Ext(fileName) == ".wasm" {
-			plugins = append(plugins, path)
-		}
-		if fileName == "index.json" && index == "" {
-			index = path
-		}
-		return nil
-	})
-	if err != nil {
-		return nil, "", err
-	}
-	return plugins, index, nil
-}
-
-// identifyPluginType identifies the type of plugin from the provided path
-func (m *Manager) identifyPluginType(pluginPath string, newRuntime proto.WazeroNewRuntime) (PluginType, error) {
-	ctx := context.Background()
-
-	b, err := os.ReadFile(pluginPath)
-	if err != nil {
-		return PluginTypeInvalid, err
-	}
-	r, err := newRuntime(ctx)
-	if err != nil {
-		return PluginTypeInvalid, err
-	}
-
-	code, err := r.CompileModule(ctx, b)
-	if err != nil {
-		return PluginTypeInvalid, err
-	}
-
-	module, err := r.InstantiateModule(ctx, code, wazero.NewModuleConfig())
-	if err != nil {
-		if exitErr, ok := err.(*sys.ExitError); ok && exitErr.ExitCode() != 0 {
-			return PluginTypeInvalid, fmt.Errorf("unexpected exit_code: %d", exitErr.ExitCode())
-		} else if !ok {
-			return PluginTypeInvalid, err
-		}
-	}
-	defer module.Close(ctx)
-
-	info := module.ExportedFunction("helper_function_info")
-	execute := module.ExportedFunction("helper_function_execute")
-
-	if info != nil && execute != nil {
-		return PluginTypeHelperFunction, nil
-	}
-	return PluginTypeInvalid, nil
-}
-
 type initializeContext struct {
 	helperFunctions *proto.HelperFunctionPlugin
 }
 
 // initializePlugins initializes the plugins
+//
+// TODO: Only load plugins that are used during template
+// execution to save processing overhead
 func (m *Manager) initializePlugins(ctx *initializeContext) error {
 	for _, plugin := range m.plugins {
 		if err := m.initializePlugin(plugin, ctx); err != nil {
@@ -354,52 +203,4 @@ func (m *Manager) initializePlugin(plugin *Plugin, ctx *initializeContext) error
 		return m.initializeHelperFunctionPlugin(plugin, ctx)
 	}
 	return nil
-}
-
-// initializeHelperFunctionPlugin initializes a helper function plugin
-func (m *Manager) initializeHelperFunctionPlugin(plugin *Plugin, ctx *initializeContext) error {
-	helper, err := ctx.helperFunctions.Load(context.Background(), plugin.Path)
-	if err != nil {
-		return errors.Errorf("could not load helper function plugin %s: %s", plugin.Name, err)
-	}
-	defer helper.Close(context.Background())
-
-	info, err := helper.Info(context.Background(), &proto.Empty{})
-	if err != nil {
-		return errors.Errorf("could not get info for helper function plugin %s: %s", plugin.Name, err)
-	}
-
-	for _, item := range info.Items {
-		item := item
-
-		gologger.Verbose().Msgf("Loaded helper function %s with %d arguments", item.GetName(), item.NumberOfArgs)
-		dsl.MustAddFunction(dsl.NewWithPositionalArgs(
-			item.GetName(),
-			int(item.NumberOfArgs),
-			makeHelperFunctionPluginExecute(ctx.helperFunctions, plugin.Path, item.GetName()),
-		))
-	}
-
-	gologger.Verbose().Msgf("Loaded helper function plugin %s", plugin.Name)
-	return nil
-}
-
-// makeHelperFunctionPluginExecute creates a helper function plugin execute function
-func makeHelperFunctionPluginExecute(p *proto.HelperFunctionPlugin, path, function string) func(arguments ...interface{}) (interface{}, error) {
-	return func(arguments ...interface{}) (interface{}, error) {
-		newPlugin, err := p.Load(context.Background(), path)
-		if err != nil {
-			return nil, errors.Wrap(err, "could not load plugin")
-		}
-		defer newPlugin.Close(context.Background())
-
-		resp, err := newPlugin.Execute(context.Background(), &proto.HelperFunctionRequest{
-			Args: proto.ToAnyScalarArray(arguments),
-			Name: function,
-		})
-		if err != nil {
-			return nil, errors.Wrap(err, "could not execute plugin")
-		}
-		return proto.ToAnyScalarValue(resp.Result), nil
-	}
 }

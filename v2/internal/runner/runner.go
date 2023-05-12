@@ -323,7 +323,8 @@ func New(options *types.Options) (*Runner, error) {
 	}
 
 	manager, err := manager.New(&manager.Options{
-		CustomPluginsDirectory: "",
+		CustomPluginsDirectory: options.CustomPluginsDirectory,
+		ListPlugins:            options.ListPlugins,
 	})
 	if err != nil {
 		return nil, errors.Wrap(err, "could not create plugins manager")

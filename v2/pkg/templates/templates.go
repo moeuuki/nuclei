@@ -118,7 +118,8 @@ type Template struct {
 	// Executer is the actual template executor for running template requests
 	Executer protocols.Executer `yaml:"-" json:"-"`
 
-	Path string `yaml:"-" json:"-"`
+	Original string `yaml:"-" json:"-"`
+	Path     string `yaml:"-" json:"-"`
 
 	// Verified defines if the template signature is digitally verified
 	Verified bool `yaml:"-" json:"-"`

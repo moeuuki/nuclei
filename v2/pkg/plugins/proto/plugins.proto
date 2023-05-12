@@ -76,7 +76,3 @@ message HelperFunctionResponse {
     // Result is the result of the helper function.
     AnyScalar Result = 1;
 }
-
-service PostResponseHook {
-    rpc Execute(PostResponseHookRequest) returns (PostResponseHookResponse) {}
-}
